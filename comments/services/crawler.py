@@ -38,6 +38,12 @@ while (walker.nextNode()) {
   const r = range.getBoundingClientRect();
   if (r.width === 0 || r.height === 0) continue;
   const key = n.parentElement;
+  let fixed = false;  // 하단 시세 바, 사이드바 같은 고정 영역은 댓글이 아니다
+  for (let e = key; e && e !== document.body; e = e.parentElement) {
+    const pos = getComputedStyle(e).position;
+    if (pos === 'fixed' || pos === 'sticky') { fixed = true; break; }
+  }
+  if (fixed) continue;
   if (byParent.has(key)) { byParent.get(key).t += ' ' + t; }
   else byParent.set(key, {t, left: r.left + window.scrollX, right: r.right + window.scrollX,
                           top: r.top + window.scrollY});
@@ -53,8 +59,8 @@ const topLimit = window.__feedTop !== undefined ? window.__feedTop : 250;
 if (window.__feedLeft === undefined && sort) window.__feedLeft = sort.left - 20;
 const leftLimit = window.__feedLeft !== undefined ? window.__feedLeft : 0;
 const feed = leaves.filter(l => l.top > topLimit && l.left >= leftLimit && l.right <= rightLimit);
-const TIME = /^\\d+\\s*(초|분|시간|일)(\\s*전)?$/;
-const SKIP = /^(팔로우|팔로잉|주주|\\d+|인기순|최신순|의견 남기기|전체 보기|오늘 시장 어떻게 보세요\\?)$/;
+const TIME = /^\\d+\\s*(초|분|시간|일)(\\s*전)?(\\s*[·•]?\\s*팔로워\\s*[\\d,.]+[만천]?)?$/;
+const SKIP = /^(팔로우|팔로잉|주주|\\d+|인기순|최신순|의견 남기기|전체 보기|실시간|오늘 시장 어떻게 보세요\\?)$/;
 const out = [], seen = new Set();
 feed.forEach((l, i) => {
   if (SKIP.test(l.t) || TIME.test(l.t)) return;
