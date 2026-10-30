@@ -20,19 +20,46 @@ BASE_URL = "https://www.tossinvest.com"
 SEARCH_INPUT = "input[placeholder*='검색'], button[aria-label*='검색']"
 STOCK_URL_RE = re.compile(r"/stocks/([A-Za-z0-9]+)")
 
-# 피드 안의 댓글 텍스트(줄바꿈이 보존되는 leaf 요소)를 모은다.
-# 클래스명이 난독화되어 있어 계산된 white-space 스타일로 식별한다.
+# 커뮤니티 피드의 텍스트를 화면 위치 기준으로 모은다.
+# 클래스명이 난독화되어 있어 DOM 구조 대신 "인기순/최신순 정렬 버튼 아래, 주문 패널 왼쪽"
+# 영역의 leaf 텍스트를 읽는다. 작성자명(시간 표기 바로 앞), 시간, 숫자, 버튼 문구는 제외한다.
 COLLECT_COMMENTS_JS = """
-const out = [];
-const seen = new Set();
-for (const el of document.querySelectorAll('span, p, div')) {
+const leaves = [];
+for (const el of document.querySelectorAll('body *')) {
   if (el.children.length > 0) continue;
-  const ws = getComputedStyle(el).whiteSpace;
-  if (!ws.startsWith('pre')) continue;
-  const text = el.innerText.trim();
-  if (text && !seen.has(text)) { seen.add(text); out.push(text); }
+  const t = (el.innerText || '').trim();
+  if (!t) continue;
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) continue;
+  leaves.push({t, left: r.left + window.scrollX, right: r.right + window.scrollX,
+               top: r.top + window.scrollY});
 }
+const find = (re) => leaves.find(l => re.test(l.t) && l.t.length < 12);
+const sort = find(/^(인기순|최신순)$/);
+if (!sort) return [];
+const order = find(/^주문하기$/);
+const rightLimit = order ? order.left - 10 : Infinity;
+const feed = leaves.filter(l => l.top > sort.top + 5 && l.left >= sort.left - 20 && l.right <= rightLimit);
+const TIME = /^\\d+\\s*(초|분|시간|일)(\\s*전)?$/;
+const SKIP = /^(팔로우|팔로잉|주주|\\d+|인기순|최신순|의견 남기기|전체 보기)$/;
+const out = [], seen = new Set();
+feed.forEach((l, i) => {
+  if (SKIP.test(l.t) || TIME.test(l.t)) return;
+  const next = feed[i + 1];
+  if (next && TIME.test(next.t)) return;  // 작성자명
+  if (!seen.has(l.t)) { seen.add(l.t); out.push(l.t); }
+});
 return out;
+"""
+
+SCROLL_JS = """
+window.scrollTo(0, document.body.scrollHeight);
+for (const el of document.querySelectorAll('*')) {
+  const oy = getComputedStyle(el).overflowY;
+  if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 20) {
+    el.scrollTop = el.scrollHeight;
+  }
+}
 """
 
 # 상세 페이지 헤더는 "삼성전자 005930" 형태다.
@@ -197,13 +224,16 @@ def collect_comments(driver, code, limit, timeout=10):
     except TimeoutException as exc:
         raise NoCommentsFound("커뮤니티에 댓글이 존재하지 않습니다.") from exc
 
-    comments = []
-    for _ in range(15):
-        comments = driver.execute_script(COLLECT_COMMENTS_JS)
-        if len(comments) >= limit:
+    comments, stale = [], 0
+    for _ in range(25):
+        found = driver.execute_script(COLLECT_COMMENTS_JS)
+        stale = stale + 1 if len(found) <= len(comments) else 0
+        comments = found if len(found) > len(comments) else comments
+        if len(comments) >= limit or stale >= 3:
             break
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(0.8)
+        driver.execute_script(SCROLL_JS)  # 내부 스크롤 영역까지 내린다
+        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
+        time.sleep(1)
     if not comments:
         raise NoCommentsFound("커뮤니티에 댓글이 존재하지 않습니다.")
     return comments[:limit]

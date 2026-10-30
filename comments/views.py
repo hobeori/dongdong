@@ -26,6 +26,7 @@ def company(request):
     for event in pipeline.run(name):
         if event["type"] == "result":
             context["analysis"] = event["analysis"]
+            context["warnings"] = event["warnings"]
         elif event["type"] == "error":
             context["error"] = event["message"]
     return render(request, "comments/index.html", context)
@@ -42,7 +43,7 @@ def company_stream(request):
         for event in pipeline.run(name):
             if event["type"] == "result":
                 html = render_to_string(
-                    "comments/_results.html", {"analysis": event["analysis"]}, request
+                    "comments/_results.html", {"analysis": event["analysis"], "warnings": event["warnings"]}, request
                 )
                 event = {"type": "result", "html": html}
             yield json.dumps(event, ensure_ascii=False) + "\n"

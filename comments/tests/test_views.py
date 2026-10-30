@@ -14,7 +14,7 @@ def fake_run(name):
         iqr_info={"min_len": 5, "max_len": 76}, summary="요약문",
     )
     yield {"type": "progress", "message": "진행"}
-    yield {"type": "result", "analysis": obj}
+    yield {"type": "result", "analysis": obj, "warnings": ["경고 예시"]}
 
 
 class ViewTests(TestCase):

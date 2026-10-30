@@ -70,3 +70,13 @@ class PipelineTests(TestCase):
             events = list(pipeline.run("zzz"))
         self.assertEqual(events[-1], {"type": "error", "message": "없음"})
         self.assertFalse(CommentAnalysis.objects.exists())
+
+    def test_llm_failure_still_returns_crawled_data(self):
+        with mock.patch("comments.services.pipeline.crawler.crawl", return_value=("삼성전자", RAW)), \
+             mock.patch.object(llm, "chat", side_effect=LLMError("키 없음")):
+            events = list(pipeline.run("삼성"))
+        self.assertEqual(events[-1]["type"], "result")
+        self.assertEqual(len(events[-1]["warnings"]), 3)
+        obj = CommentAnalysis.objects.get()
+        self.assertEqual(obj.raw_comments, RAW)
+        self.assertEqual(obj.augmented_comments, [])

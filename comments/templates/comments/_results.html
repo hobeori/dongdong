@@ -1,5 +1,6 @@
 <section class="results">
   <h2>{{ analysis.stock_name }} 댓글 분석 결과</h2>
+  {% for w in warnings %}<div class="status warn" role="status">{{ w }}</div>{% endfor %}
   <div class="columns">
     <div class="column">
       <h3>원본 데이터 ({{ analysis.raw_comments|length }}개)</h3>
