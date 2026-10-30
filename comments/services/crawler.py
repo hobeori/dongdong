@@ -98,27 +98,38 @@ def _dump_debug(driver, step):
         pass
 
 
+MODAL_INPUT = "input[placeholder*='검색어']"
+
+
+def _visible(driver, css):
+    for el in driver.find_elements(By.CSS_SELECTOR, css):
+        if el.is_displayed():
+            return el
+    return None
+
+
 def _open_search_modal(driver, wait):
-    """검색 모달을 열고 입력창(포커스된 input)을 반환한다."""
+    """검색 모달을 열고 모달의 입력창을 반환한다."""
     driver.get(BASE_URL)
     wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
-    time.sleep(1)
-    opened = False
+    time.sleep(2)
+    # 여러 방법을 차례로 시도: 일반 클릭 -> JS 클릭 -> "/" 단축키
+    attempts = (
+        lambda el: el.click(),
+        lambda el: driver.execute_script("arguments[0].click();", el),
+    )
     for el in driver.find_elements(By.CSS_SELECTOR, SEARCH_INPUT):
-        try:
-            el.click()
-            opened = True
-            break
-        except WebDriverException:
-            continue
-    if not opened:  # 검색창이 "/" 키로도 열린다
-        driver.find_element(By.TAG_NAME, "body").send_keys("/")
-
-    def focused_input(d):
-        el = d.switch_to.active_element
-        return el if el.tag_name.lower() == "input" else False
-
-    return wait.until(focused_input)
+        for attempt in attempts:
+            try:
+                attempt(el)
+            except WebDriverException:
+                continue
+            time.sleep(1)
+            box = _visible(driver, MODAL_INPUT)
+            if box:
+                return box
+    driver.find_element(By.TAG_NAME, "body").send_keys("/")
+    return wait.until(lambda d: _visible(d, MODAL_INPUT))
 
 
 def search_company(driver, name, timeout=10):
