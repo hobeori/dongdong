@@ -17,7 +17,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from .errors import CompanyNotFound, NoCommentsFound, PipelineError
 
 BASE_URL = "https://www.tossinvest.com"
-SEARCH_INPUT = "input[placeholder*='검색']"
+SEARCH_INPUT = "input[placeholder*='검색'], button[aria-label*='검색']"
 STOCK_URL_RE = re.compile(r"/stocks/([A-Za-z0-9]+)")
 
 # 피드 안의 댓글 텍스트(줄바꿈이 보존되는 leaf 요소)를 모은다.
@@ -45,8 +45,6 @@ for (const el of document.querySelectorAll('span, div, h1, h2')) {
 }
 return '';
 """
-# 검색 모달이 열려 있는 동안 보이는 안내 문구 (결과가 뜨면 사라진다)
-SEARCH_IDLE_TEXTS = ("최근 검색", "인기 주식")
 
 
 @contextmanager
@@ -59,6 +57,13 @@ def make_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--window-size=1400,1000")
     options.add_argument("--lang=ko-KR")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    if settings.CRAWL_HEADLESS:  # headless UA에는 "HeadlessChrome"이 들어가 차단될 수 있다
+        options.add_argument(
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
     from selenium.webdriver.chrome.service import Service
 
     try:
@@ -81,27 +86,63 @@ def make_driver():
         driver.quit()
 
 
-def _modal_idle(driver):
-    body = driver.find_element(By.TAG_NAME, "body").text
-    return any(t in body for t in SEARCH_IDLE_TEXTS)
+def _dump_debug(driver, step):
+    """실패 시 화면과 HTML을 저장해 셀렉터를 확인할 수 있게 한다."""
+    try:
+        out = settings.BASE_DIR / "crawl_debug"
+        out.mkdir(exist_ok=True)
+        driver.save_screenshot(str(out / f"{step}.png"))
+        (out / f"{step}.html").write_text(driver.page_source, encoding="utf-8")
+        print(f"[crawler] '{step}' 단계 실패 - 디버그 파일 저장: {out}")
+    except Exception:
+        pass
+
+
+def _open_search_modal(driver, wait):
+    """검색 모달을 열고 입력창(포커스된 input)을 반환한다."""
+    driver.get(BASE_URL)
+    wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+    time.sleep(1)
+    opened = False
+    for el in driver.find_elements(By.CSS_SELECTOR, SEARCH_INPUT):
+        try:
+            el.click()
+            opened = True
+            break
+        except WebDriverException:
+            continue
+    if not opened:  # 검색창이 "/" 키로도 열린다
+        driver.find_element(By.TAG_NAME, "body").send_keys("/")
+
+    def focused_input(d):
+        el = d.switch_to.active_element
+        return el if el.tag_name.lower() == "input" else False
+
+    return wait.until(focused_input)
 
 
 def search_company(driver, name, timeout=10):
     """검색창에 회사명을 입력하고 최상단 결과로 이동한다. 종목 코드를 반환."""
     wait = WebDriverWait(driver, timeout)
-    driver.get(BASE_URL)
+    step = "open_search"
     try:
-        # 우측 상단 검색창을 클릭하면 모달이 열리고 입력창에 포커스가 간다.
-        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SEARCH_INPUT))).click()
-        wait.until(lambda d: _modal_idle(d))
-        box = driver.switch_to.active_element
+        box = _open_search_modal(driver, wait)
+        step = "type_and_select"
         box.send_keys(name)
-        # 홈 화면에도 종목 링크가 있으므로, 모달의 안내 문구가 사라져 결과가 뜰 때까지 기다린다.
-        wait.until(lambda d: not _modal_idle(d))
-        time.sleep(0.5)
-        box.send_keys(Keys.ENTER)  # 최상단 결과가 자동 포커스되어 있다
-        wait.until(EC.url_matches(r"/stocks/[A-Za-z0-9]+"))
+        time.sleep(2)  # 검색 결과가 뜰 때까지 대기 (최상단 항목이 자동 포커스됨)
+        box.send_keys(Keys.ENTER)
+        try:
+            wait.until(EC.url_matches(r"/stocks/[A-Za-z0-9]+"))
+        except TimeoutException:  # 자동 포커스가 없었다면 첫 항목으로 직접 이동
+            box.send_keys(Keys.ARROW_DOWN)
+            box.send_keys(Keys.ENTER)
+            wait.until(EC.url_matches(r"/stocks/[A-Za-z0-9]+"))
     except TimeoutException as exc:
+        _dump_debug(driver, step)
+        if step == "open_search":
+            raise PipelineError(
+                "토스증권 검색창을 열지 못했습니다 (crawl_debug 폴더 확인)."
+            ) from exc
         raise CompanyNotFound(f"'{name}'에 대한 검색 결과가 없습니다.") from exc
     match = STOCK_URL_RE.search(driver.current_url)
     if not match:
