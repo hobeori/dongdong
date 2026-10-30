@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>댓글 증강 시스템</title>
+  <style>
+    :root { --blue: #1a73e8; --bg: #f1f5f9; --card: #fff; --text: #1f2937; --muted: #6b7280; --err: #b91c1c; --errbg: #fef2f2; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, "Noto Sans KR", sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { text-align: center; color: var(--blue); }
+    .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    form { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+    input[type=text] { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; min-width: 220px; }
+    button { background: var(--blue); color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .hint { text-align: center; font-size: .8rem; color: var(--muted); margin: 8px 0 0; }
+    .status { margin-top: 16px; padding: 10px 14px; border-radius: 8px; text-align: center; }
+    .status.progress { background: #eff6ff; color: var(--blue); }
+    .status.error { background: var(--errbg); color: var(--err); }
+    .results { margin-top: 24px; }
+    .results > h2 { text-align: center; }
+    .columns { display: flex; gap: 8px; align-items: stretch; }
+    .column { flex: 1; min-width: 0; background: var(--card); border-radius: 8px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.08); max-height: 520px; overflow-y: auto; }
+    .column h3 { text-align: center; color: var(--blue); font-size: .95rem; margin: 0 0 8px; }
+    .column ol { margin: 0; padding-left: 20px; font-size: .85rem; line-height: 1.5; }
+    .column li { margin-bottom: 6px; overflow-wrap: anywhere; }
+    .arrow { align-self: center; color: var(--blue); font-weight: bold; font-size: 1.4rem; }
+    .summary { margin-top: 20px; background: var(--card); border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .summary h3 { margin-top: 0; color: var(--blue); }
+    @media (max-width: 900px) { .columns { flex-direction: column; } .arrow { transform: rotate(90deg); } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>💭 댓글 증강 시스템</h1>
+  <div class="card">
+    <form id="search-form" method="get" action="{% url 'comments:company' %}">
+      <label for="company_name">회사 이름 입력:</label>
+      <input type="text" id="company_name" name="company_name" placeholder="예: 삼성전자" value="{{ company_name|default:'' }}" autocomplete="off">
+      <button type="submit" id="submit-btn">검색</button>
+    </form>
+    <p class="hint">회사명 일부만 입력해도 됩니다. (가장 상단의 검색 결과를 자동 선택)</p>
+    <div id="status">
+      {% if error %}<div class="status error" role="alert">{{ error }}</div>{% endif %}
+    </div>
+  </div>
+  <div id="results">{% if analysis %}{% include "comments/_results.html" %}{% endif %}</div>
+</main>
+
+<script>
+  // 스트리밍: 크롤링 진행 상황을 단계별로 보여준다. JS가 없으면 일반 폼 제출로 동작한다.
+  const form = document.getElementById('search-form');
+  const statusBox = document.getElementById('status');
+  const results = document.getElementById('results');
+  const btn = document.getElementById('submit-btn');
+
+  function setStatus(kind, text) {
+    statusBox.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'status ' + kind;
+    if (kind === 'error') div.setAttribute('role', 'alert');
+    div.textContent = text;
+    statusBox.appendChild(div);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    const name = form.company_name.value.trim();
+    if (!name) { e.preventDefault(); return; }  // 입력값이 없으면 아무 동작도 하지 않는다
+    if (!window.fetch || !window.TextDecoder) return;
+    e.preventDefault();
+    btn.disabled = true;
+    results.innerHTML = '';
+    setStatus('progress', '댓글 수집 중...');
+    try {
+      const resp = await fetch('{% url "comments:company_stream" %}?company_name=' + encodeURIComponent(name));
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '', finished = false;
+      const handle = (line) => {
+        if (!line.trim()) return;
+        const ev = JSON.parse(line);
+        if (ev.type === 'progress') setStatus('progress', ev.message);
+        else if (ev.type === 'error') { setStatus('error', ev.message); finished = true; }
+        else if (ev.type === 'result') { statusBox.innerHTML = ''; results.innerHTML = ev.html; finished = true; }
+      };
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        lines.forEach(handle);
+      }
+      handle(buf);
+      if (!finished) setStatus('error', '처리 중 오류가 발생했습니다.');
+    } catch (err) {
+      setStatus('error', '서버와 통신하지 못했습니다.');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

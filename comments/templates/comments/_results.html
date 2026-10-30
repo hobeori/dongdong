@@ -1,0 +1,30 @@
+<section class="results">
+  <h2>{{ analysis.stock_name }} 댓글 분석 결과</h2>
+  <div class="columns">
+    <div class="column">
+      <h3>원본 데이터 ({{ analysis.raw_comments|length }}개)</h3>
+      <ol>{% for c in analysis.raw_comments %}<li>{{ c }}</li>{% endfor %}</ol>
+    </div>
+    <div class="arrow">&gt;</div>
+    <div class="column">
+      <h3>전처리 후 ({{ analysis.cleaned_comments|length }}개) - (길이: {{ analysis.iqr_info.min_len }} ~ {{ analysis.iqr_info.max_len }})</h3>
+      <ol>{% for c in analysis.cleaned_comments %}<li>{{ c }}</li>{% endfor %}</ol>
+    </div>
+    <div class="arrow">&gt;</div>
+    <div class="column">
+      <h3>증강 데이터 ({{ analysis.augmented_comments|length }}개)</h3>
+      <ol>{% for c in analysis.augmented_comments %}<li>{{ c }}</li>{% endfor %}</ol>
+    </div>
+    <div class="arrow">&gt;</div>
+    <div class="column">
+      <h3>최종 결과 ({{ analysis.final_comments|length }}개)</h3>
+      <ol>{% for c in analysis.final_comments %}<li>{{ c }}</li>{% endfor %}</ol>
+    </div>
+  </div>
+  {% if analysis.summary %}
+  <div class="summary">
+    <h3>댓글 요약</h3>
+    <p>{{ analysis.summary|linebreaksbr }}</p>
+  </div>
+  {% endif %}
+</section>
