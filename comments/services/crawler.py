@@ -46,7 +46,7 @@ while (walker.nextNode()) {
   if (fixed) continue;
   if (byParent.has(key)) { byParent.get(key).t += ' ' + t; }
   else byParent.set(key, {t, left: r.left + window.scrollX, right: r.right + window.scrollX,
-                          top: r.top + window.scrollY});
+                          top: r.top + window.scrollY, vbottom: r.bottom});
 }
 const leaves = [...byParent.values()];
 const find = (re) => leaves.find(l => re.test(l.t) && l.t.length < 12);
@@ -58,7 +58,11 @@ if (window.__feedTop === undefined && sort) window.__feedTop = sort.top + 5;
 const topLimit = window.__feedTop !== undefined ? window.__feedTop : 250;
 if (window.__feedLeft === undefined && sort) window.__feedLeft = sort.left - 20;
 const leftLimit = window.__feedLeft !== undefined ? window.__feedLeft : 0;
-const feed = leaves.filter(l => l.top > topLimit && l.left >= leftLimit && l.right <= rightLimit);
+// 화면 하단의 시세 바("투자 유의사항 ... 달러 인덱스 ...") 위까지만 피드로 본다.
+const footer = leaves.find(l => /^투자 유의사항$/.test(l.t));
+const bottomLimit = footer ? footer.top - window.scrollY - 2 : window.innerHeight - 50;
+const feed = leaves.filter(l => l.top > topLimit && l.left >= leftLimit && l.right <= rightLimit
+                                && l.vbottom <= bottomLimit);
 const TIME = /^\\d+\\s*(초|분|시간|일)(\\s*전)?(\\s*[^\\w가-힣\\s]?\\s*팔로워\\s*[\\d,.]+[만천]?)?$/;
 const SKIP = /^(팔로우|팔로잉|주주|\\d+|인기순|최신순|의견 남기기|전체 보기|실시간|오늘 시장 어떻게 보세요\\?)$/;
 const out = [], seen = new Set();
@@ -72,11 +76,12 @@ return out;
 """
 
 SCROLL_JS = """
-window.scrollTo(0, document.body.scrollHeight);
+// 중간 댓글을 건너뛰지 않도록 화면 높이의 60%씩 내린다.
+window.scrollBy(0, window.innerHeight * 0.6);
 for (const el of document.querySelectorAll('*')) {
   const oy = getComputedStyle(el).overflowY;
   if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 20) {
-    el.scrollTop = el.scrollHeight;
+    el.scrollTop += el.clientHeight * 0.6;
   }
 }
 """
@@ -245,16 +250,15 @@ def collect_comments(driver, code, limit, timeout=10):
         raise NoCommentsFound("커뮤니티에 댓글이 존재하지 않습니다.") from exc
 
     comments, stale = [], 0
-    for _ in range(25):
+    for _ in range(40):
         before = len(comments)
         for text in driver.execute_script(COLLECT_COMMENTS_JS):  # 스크롤하며 누적
             if text not in comments:
                 comments.append(text)
         stale = stale + 1 if len(comments) == before else 0
-        if len(comments) >= limit or stale >= 3:
+        if len(comments) >= limit or stale >= 4:
             break
         driver.execute_script(SCROLL_JS)  # 내부 스크롤 영역까지 내린다
-        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
         time.sleep(1)
     if not comments:
         raise NoCommentsFound("커뮤니티에 댓글이 존재하지 않습니다.")
