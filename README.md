@@ -13,7 +13,7 @@ python manage.py runserver
 ```
 
 http://127.0.0.1:8000/ 접속 → 회사명 입력(예: `삼성`). Chrome이 설치되어 있어야 합니다.
-옵션 환경변수: `CRAWL_HEADLESS=1`(창 없이 실행, 기본은 창 표시), `CHROME_BINARY`, `CHROMEDRIVER_PATH`, `GMS_MODEL`.
+옵션 환경변수: `CRAWL_HEADLESS=0`(디버깅용 브라우저 창 표시, 기본은 창 없이 실행), `CHROME_BINARY`, `CHROMEDRIVER_PATH`, `GMS_MODEL`.
 
 테스트: `python manage.py test` (크롤러/LLM은 mock 처리)
 

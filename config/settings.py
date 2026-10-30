@@ -153,6 +153,6 @@ GMS_TIMEOUT = int(os.environ.get("GMS_TIMEOUT", "120"))
 CHROME_BINARY = os.environ.get("CHROME_BINARY", "")  # 비우면 기본 Chrome
 CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH", "")  # 비우면 자동 관리
 CRAWL_COMMENT_LIMIT = 20
-CRAWL_HEADLESS = os.environ.get("CRAWL_HEADLESS", "0") != "0"  # 기본은 창 표시, 1이면 headless
+CRAWL_HEADLESS = os.environ.get("CRAWL_HEADLESS", "1") != "0"  # 기본은 창 없이 실행, 0이면 브라우저 창 표시
 COMMENT_MIN_LEN = 5
 COMMENT_MAX_LEN = 76
