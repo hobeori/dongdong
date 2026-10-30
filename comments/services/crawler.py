@@ -98,6 +98,20 @@ def _dump_debug(driver, step):
         pass
 
 
+# 최초 접속 시 뜨는 안내 말풍선/배너의 닫기 버튼을 누른다.
+DISMISS_POPUPS_JS = """
+let n = 0;
+for (const el of document.querySelectorAll('[aria-label*="닫"], [aria-label*="close" i], button')) {
+  const label = (el.getAttribute('aria-label') || '') + (el.innerText || '');
+  if (/닫|close|^[×✕xX]$/i.test(label.trim()) && el.offsetParent !== null) { el.click(); n++; }
+}
+// "요즘 어디로 돈이..." 같은 말풍선: 텍스트를 포함한 가장 가까운 컨테이너의 마지막 버튼
+const tip = [...document.querySelectorAll('div')].find(
+  d => d.innerText && d.innerText.includes('보여요') && d.innerText.length < 120 && d.querySelector('button, svg'));
+if (tip) { const b = tip.querySelector('button') || tip.querySelector('svg'); if (b) { b.dispatchEvent(new MouseEvent('click', {bubbles: true})); n++; } }
+return n;
+"""
+
 MODAL_INPUT = "input[placeholder*='검색어']"
 
 
@@ -113,6 +127,10 @@ def _open_search_modal(driver, wait):
     driver.get(BASE_URL)
     wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
     time.sleep(2)
+    for _ in range(2):  # 온보딩 팝업이 클릭/단축키를 가로채므로 먼저 닫는다
+        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+        driver.execute_script(DISMISS_POPUPS_JS)
+        time.sleep(0.5)
     # 여러 방법을 차례로 시도: 일반 클릭 -> JS 클릭 -> "/" 단축키
     attempts = (
         lambda el: el.click(),
