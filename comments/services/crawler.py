@@ -24,24 +24,37 @@ STOCK_URL_RE = re.compile(r"/stocks/([A-Za-z0-9]+)")
 # 클래스명이 난독화되어 있어 DOM 구조 대신 "인기순/최신순 정렬 버튼 아래, 주문 패널 왼쪽"
 # 영역의 leaf 텍스트를 읽는다. 작성자명(시간 표기 바로 앞), 시간, 숫자, 버튼 문구는 제외한다.
 COLLECT_COMMENTS_JS = """
-const leaves = [];
-for (const el of document.querySelectorAll('body *')) {
-  if (el.children.length > 0) continue;
-  const t = (el.innerText || '').trim();
+// 텍스트 노드 단위로 읽는다 (아이콘이 같이 들어있는 버튼도 텍스트를 가진다).
+const byParent = new Map();
+const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+while (walker.nextNode()) {
+  const n = walker.currentNode;
+  const t = n.nodeValue.trim();
   if (!t) continue;
-  const r = el.getBoundingClientRect();
+  const tag = n.parentElement && n.parentElement.tagName;
+  if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
+  const range = document.createRange();
+  range.selectNodeContents(n);
+  const r = range.getBoundingClientRect();
   if (r.width === 0 || r.height === 0) continue;
-  leaves.push({t, left: r.left + window.scrollX, right: r.right + window.scrollX,
-               top: r.top + window.scrollY});
+  const key = n.parentElement;
+  if (byParent.has(key)) { byParent.get(key).t += ' ' + t; }
+  else byParent.set(key, {t, left: r.left + window.scrollX, right: r.right + window.scrollX,
+                          top: r.top + window.scrollY});
 }
+const leaves = [...byParent.values()];
 const find = (re) => leaves.find(l => re.test(l.t) && l.t.length < 12);
 const sort = find(/^(인기순|최신순)$/);
-if (!sort) return [];
 const order = find(/^주문하기$/);
 const rightLimit = order ? order.left - 10 : Infinity;
-const feed = leaves.filter(l => l.top > sort.top + 5 && l.left >= sort.left - 20 && l.right <= rightLimit);
+// 내부 스크롤로 기준점이 밀리지 않도록 처음 찾은 위치를 고정한다.
+if (window.__feedTop === undefined && sort) window.__feedTop = sort.top + 5;
+const topLimit = window.__feedTop !== undefined ? window.__feedTop : 250;
+if (window.__feedLeft === undefined && sort) window.__feedLeft = sort.left - 20;
+const leftLimit = window.__feedLeft !== undefined ? window.__feedLeft : 0;
+const feed = leaves.filter(l => l.top > topLimit && l.left >= leftLimit && l.right <= rightLimit);
 const TIME = /^\\d+\\s*(초|분|시간|일)(\\s*전)?$/;
-const SKIP = /^(팔로우|팔로잉|주주|\\d+|인기순|최신순|의견 남기기|전체 보기)$/;
+const SKIP = /^(팔로우|팔로잉|주주|\\d+|인기순|최신순|의견 남기기|전체 보기|오늘 시장 어떻게 보세요\\?)$/;
 const out = [], seen = new Set();
 feed.forEach((l, i) => {
   if (SKIP.test(l.t) || TIME.test(l.t)) return;
@@ -222,13 +235,16 @@ def collect_comments(driver, code, limit, timeout=10):
     try:
         wait.until(lambda d: d.execute_script(COLLECT_COMMENTS_JS))
     except TimeoutException as exc:
+        _dump_debug(driver, "community")
         raise NoCommentsFound("커뮤니티에 댓글이 존재하지 않습니다.") from exc
 
     comments, stale = [], 0
     for _ in range(25):
-        found = driver.execute_script(COLLECT_COMMENTS_JS)
-        stale = stale + 1 if len(found) <= len(comments) else 0
-        comments = found if len(found) > len(comments) else comments
+        before = len(comments)
+        for text in driver.execute_script(COLLECT_COMMENTS_JS):  # 스크롤하며 누적
+            if text not in comments:
+                comments.append(text)
+        stale = stale + 1 if len(comments) == before else 0
         if len(comments) >= limit or stale >= 3:
             break
         driver.execute_script(SCROLL_JS)  # 내부 스크롤 영역까지 내린다
