@@ -25,7 +25,7 @@ STOCK_URL_RE = re.compile(r"/stocks/([A-Za-z0-9]+)")
 COLLECT_COMMENTS_JS = """
 const out = [];
 const seen = new Set();
-for (const el of document.querySelectorAll('main span, main p, main div')) {
+for (const el of document.querySelectorAll('span, p, div')) {
   if (el.children.length > 0) continue;
   const ws = getComputedStyle(el).whiteSpace;
   if (!ws.startsWith('pre')) continue;
@@ -34,6 +34,19 @@ for (const el of document.querySelectorAll('main span, main p, main div')) {
 }
 return out;
 """
+
+# 상세 페이지 헤더는 "삼성전자 005930" 형태다.
+STOCK_HEADER_JS = """
+for (const el of document.querySelectorAll('span, div, h1, h2')) {
+  const t = el.innerText ? el.innerText.trim() : '';
+  if (t.length > 40) continue;
+  const m = t.match(/^(.+?)\\s+[0-9A-Z]{6}$/);
+  if (m) return m[1].trim();
+}
+return '';
+"""
+# 검색 모달이 열려 있는 동안 보이는 안내 문구 (결과가 뜨면 사라진다)
+SEARCH_IDLE_TEXTS = ("최근 검색", "인기 주식")
 
 
 @contextmanager
@@ -68,20 +81,25 @@ def make_driver():
         driver.quit()
 
 
+def _modal_idle(driver):
+    body = driver.find_element(By.TAG_NAME, "body").text
+    return any(t in body for t in SEARCH_IDLE_TEXTS)
+
+
 def search_company(driver, name, timeout=10):
     """검색창에 회사명을 입력하고 최상단 결과로 이동한다. 종목 코드를 반환."""
     wait = WebDriverWait(driver, timeout)
     driver.get(BASE_URL)
     try:
-        box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SEARCH_INPUT)))
-        box.click()
-        # 클릭 후 열리는 모달의 입력창이 실제 입력 대상이다.
-        box = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, SEARCH_INPUT)))
+        # 우측 상단 검색창을 클릭하면 모달이 열리고 입력창에 포커스가 간다.
+        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SEARCH_INPUT))).click()
+        wait.until(lambda d: _modal_idle(d))
+        box = driver.switch_to.active_element
         box.send_keys(name)
-        # 검색 결과가 뜨면 최상단 항목이 자동 포커스되므로 Enter로 선택한다.
-        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, "a[href*='/stocks/']"))
+        # 홈 화면에도 종목 링크가 있으므로, 모달의 안내 문구가 사라져 결과가 뜰 때까지 기다린다.
+        wait.until(lambda d: not _modal_idle(d))
         time.sleep(0.5)
-        box.send_keys(Keys.ENTER)
+        box.send_keys(Keys.ENTER)  # 최상단 결과가 자동 포커스되어 있다
         wait.until(EC.url_matches(r"/stocks/[A-Za-z0-9]+"))
     except TimeoutException as exc:
         raise CompanyNotFound(f"'{name}'에 대한 검색 결과가 없습니다.") from exc
@@ -92,13 +110,12 @@ def search_company(driver, name, timeout=10):
 
 
 def stock_name(driver, fallback):
-    """상세 페이지 헤더에서 실제 종목명을 읽는다."""
-    for css in ("h1", "[data-contents-label='stock-name']"):
-        for el in driver.find_elements(By.CSS_SELECTOR, css):
-            if el.text.strip():
-                return el.text.strip()
-    title = driver.title.split("·")[0].split("-")[0].strip()
-    return title or fallback
+    """상세 페이지 헤더("삼성전자 005930")에서 실제 종목명을 읽는다."""
+    try:
+        WebDriverWait(driver, 5).until(lambda d: d.execute_script(STOCK_HEADER_JS))
+    except TimeoutException:
+        return fallback
+    return driver.execute_script(STOCK_HEADER_JS) or fallback
 
 
 def collect_comments(driver, code, limit, timeout=10):
