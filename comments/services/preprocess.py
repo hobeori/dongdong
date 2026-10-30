@@ -15,8 +15,8 @@ def clean_text(text):
     return _SPACES.sub(" ", text).strip()
 
 
-def filter_by_rules(comments, min_len=None, max_len=None):
-    """결측치, 너무 짧거나 긴 댓글, 정제 후 의미가 없어진 댓글을 제거한다.
+def apply_rules(comments, min_len=None, max_len=None):
+    """원본과 같은 순서로, 규칙을 통과한 댓글은 정제된 문자열을, 제거된 댓글은 None을 돌려준다.
 
     길이 상한은 원문 기준, 하한은 정제 후 기준으로 검사한다.
     """
@@ -24,15 +24,17 @@ def filter_by_rules(comments, min_len=None, max_len=None):
     max_len = settings.COMMENT_MAX_LEN if max_len is None else max_len
     result = []
     for comment in comments:
-        if not isinstance(comment, str) or not comment.strip():
-            continue
-        if len(comment.strip()) > max_len:
+        if not isinstance(comment, str) or not comment.strip() or len(comment.strip()) > max_len:
+            result.append(None)
             continue
         cleaned = clean_text(comment)
-        if len(cleaned) < min_len:
-            continue
-        result.append(cleaned)
+        result.append(cleaned if len(cleaned) >= min_len else None)
     return result
+
+
+def filter_by_rules(comments, min_len=None, max_len=None):
+    """결측치, 너무 짧거나 긴 댓글, 정제 후 의미가 없어진 댓글을 제거한 정제 목록."""
+    return [c for c in apply_rules(comments, min_len, max_len) if c is not None]
 
 
 def _quantile(sorted_values, q):

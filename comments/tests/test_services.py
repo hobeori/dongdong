@@ -50,9 +50,12 @@ class LLMTests(SimpleTestCase):
 RAW = ["20만갈꺼같음 19만에 정리할꺼임", "364주", "욕설 댓글입니다 정말로", "조금씩 모아가는 마인드로 묻힌다"]
 
 
+CRAWLED = {"type": "crawled", "official": "삼성전자", "comments": RAW}
+
+
 class PipelineTests(TestCase):
     def test_full_run_saves_all_stages(self):
-        with mock.patch("comments.services.pipeline.crawler.crawl", return_value=("삼성전자", RAW)), \
+        with mock.patch("comments.services.pipeline.crawler.crawl_events", return_value=iter([CRAWLED])), \
              mock.patch.object(llm, "find_inappropriate", return_value={1}), \
              mock.patch.object(llm, "augment", side_effect=lambda c: [x + " 확장" for x in c]), \
              mock.patch.object(llm, "summarize", return_value="요약"):
@@ -64,15 +67,18 @@ class PipelineTests(TestCase):
         self.assertEqual(len(obj.cleaned_comments), 2)  # 364주 제거, 부적절 1개 제거
         self.assertEqual(len(obj.final_comments), 4)
         self.assertEqual(obj.summary, "요약")
+        self.assertEqual(obj.raw_status, ["kept", "rule", "llm", "kept"])
+        self.assertEqual([r["status"] for r in obj.raw_rows], ["kept", "rule", "llm", "kept"])
+        self.assertEqual(obj.removed_count, 2)
 
     def test_company_not_found_is_reported(self):
-        with mock.patch("comments.services.pipeline.crawler.crawl", side_effect=CompanyNotFound("없음")):
+        with mock.patch("comments.services.pipeline.crawler.crawl_events", side_effect=CompanyNotFound("없음")):
             events = list(pipeline.run("zzz"))
         self.assertEqual(events[-1], {"type": "error", "message": "없음"})
         self.assertFalse(CommentAnalysis.objects.exists())
 
     def test_llm_failure_still_returns_crawled_data(self):
-        with mock.patch("comments.services.pipeline.crawler.crawl", return_value=("삼성전자", RAW)), \
+        with mock.patch("comments.services.pipeline.crawler.crawl_events", return_value=iter([CRAWLED])), \
              mock.patch.object(llm, "chat", side_effect=LLMError("키 없음")):
             events = list(pipeline.run("삼성"))
         self.assertEqual(events[-1]["type"], "result")

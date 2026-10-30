@@ -1,31 +1,55 @@
-<section class="results">
-  <h2>{{ analysis.stock_name }} 댓글 분석 결과</h2>
-  {% for w in warnings %}<div class="status warn" role="status">{{ w }}</div>{% endfor %}
-  <div class="columns">
-    <div class="column">
-      <h3>원본 데이터 ({{ analysis.raw_comments|length }}개)</h3>
-      <ol>{% for c in analysis.raw_comments %}<li>{{ c }}</li>{% endfor %}</ol>
-    </div>
-    <div class="arrow">&gt;</div>
-    <div class="column">
-      <h3>전처리 후 ({{ analysis.cleaned_comments|length }}개) - (길이: {{ analysis.iqr_info.min_len }} ~ {{ analysis.iqr_info.max_len }})</h3>
-      <ol>{% for c in analysis.cleaned_comments %}<li>{{ c }}</li>{% endfor %}</ol>
-    </div>
-    <div class="arrow">&gt;</div>
-    <div class="column">
-      <h3>증강 데이터 ({{ analysis.augmented_comments|length }}개)</h3>
-      <ol>{% for c in analysis.augmented_comments %}<li>{{ c }}</li>{% endfor %}</ol>
-    </div>
-    <div class="arrow">&gt;</div>
-    <div class="column">
-      <h3>최종 결과 ({{ analysis.final_comments|length }}개)</h3>
-      <ol>{% for c in analysis.final_comments %}<li>{{ c }}</li>{% endfor %}</ol>
-    </div>
-  </div>
+<section class="results" aria-labelledby="result-title">
+  <h2 id="result-title" class="results-title">{{ analysis.stock_name }} <span>댓글 분석 결과</span></h2>
+
+  {% for w in warnings %}<div class="notice warn" role="status">{{ w }}</div>{% endfor %}
+
   {% if analysis.summary %}
   <div class="summary">
     <h3>댓글 요약</h3>
     <p>{{ analysis.summary|linebreaksbr }}</p>
   </div>
   {% endif %}
+
+  <div class="tabs" role="tablist" aria-label="처리 단계별 댓글">
+    <button type="button" role="tab" class="tab active" id="tab-raw" aria-selected="true" aria-controls="panel-raw" data-tab="raw">원본 <b>{{ analysis.raw_comments|length }}</b></button>
+    <button type="button" role="tab" class="tab" id="tab-cleaned" aria-selected="false" aria-controls="panel-cleaned" data-tab="cleaned">전처리 <b>{{ analysis.cleaned_comments|length }}</b></button>
+    <button type="button" role="tab" class="tab" id="tab-augmented" aria-selected="false" aria-controls="panel-augmented" data-tab="augmented">증강 <b>{{ analysis.augmented_comments|length }}</b></button>
+    <button type="button" role="tab" class="tab" id="tab-final" aria-selected="false" aria-controls="panel-final" data-tab="final">최종 <b>{{ analysis.final_comments|length }}</b></button>
+  </div>
+
+  <div class="panel" role="tabpanel" id="panel-raw" aria-labelledby="tab-raw" data-panel="raw">
+    <p class="panel-note">
+      수집한 댓글 {{ analysis.raw_comments|length }}개 중 <strong>{{ analysis.removed_count }}개</strong>가 제거되었습니다.
+      흐리게 표시된 댓글이 제거된 댓글입니다.
+    </p>
+    <ol class="comments">
+      {% for row in analysis.raw_rows %}
+      <li class="{% if row.status != 'kept' %}removed{% endif %}">
+        <span class="text">{{ row.text }}</span>
+        {% if row.status == 'rule' %}<span class="badge">규칙 제거</span>{% elif row.status == 'llm' %}<span class="badge">부적절</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+
+  <div class="panel" role="tabpanel" id="panel-cleaned" aria-labelledby="tab-cleaned" data-panel="cleaned" hidden>
+    <p class="panel-note">길이 {{ analysis.iqr_info.min_len }}~{{ analysis.iqr_info.max_len }}자 · 특수문자 제거 · 부적절 댓글 제거 후 남은 댓글입니다.</p>
+    <ol class="comments">{% for c in analysis.cleaned_comments %}<li><span class="text">{{ c }}</span></li>{% endfor %}</ol>
+  </div>
+
+  <div class="panel" role="tabpanel" id="panel-augmented" aria-labelledby="tab-augmented" data-panel="augmented" hidden>
+    <p class="panel-note">전처리된 댓글의 의미를 유지한 채 확장한 문장입니다.</p>
+    <ol class="comments">
+      {% for c in analysis.augmented_comments %}<li><span class="text">{{ c }}</span></li>
+      {% empty %}<li class="empty">증강 결과가 없습니다.</li>{% endfor %}
+    </ol>
+  </div>
+
+  <div class="panel" role="tabpanel" id="panel-final" aria-labelledby="tab-final" data-panel="final" hidden>
+    <p class="panel-note">전처리 댓글과 증강 댓글을 합친 통합 결과입니다.</p>
+    <ol class="comments">
+      {% for c in analysis.cleaned_comments %}<li><span class="text">{{ c }}</span><span class="badge soft">원문</span></li>{% endfor %}
+      {% for c in analysis.augmented_comments %}<li><span class="text">{{ c }}</span><span class="badge">증강</span></li>{% endfor %}
+    </ol>
+  </div>
 </section>

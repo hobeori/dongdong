@@ -30,7 +30,7 @@ class ViewTests(TestCase):
              mock.patch("builtins.print") as printed:
             resp = self.client.get(reverse("comments:company"), {"company_name": "삼성"})
         printed.assert_called_with("삼성")
-        self.assertContains(resp, "삼성전자 댓글 분석 결과")
+        self.assertContains(resp, "댓글 분석 결과")
         self.assertContains(resp, "요약문")
 
     def test_error_message_shown(self):
@@ -45,7 +45,7 @@ class ViewTests(TestCase):
             resp = self.client.get(reverse("comments:company_stream"), {"company_name": "삼성"})
             lines = [json.loads(l) for l in b"".join(resp.streaming_content).decode().splitlines()]
         self.assertEqual([l["type"] for l in lines], ["progress", "result"])
-        self.assertIn("삼성전자 댓글 분석 결과", lines[1]["html"])
+        self.assertIn("댓글 분석 결과", lines[1]["html"])
 
     def test_stream_empty_name_400(self):
         resp = self.client.get(reverse("comments:company_stream"))

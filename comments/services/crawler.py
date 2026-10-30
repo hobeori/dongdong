@@ -265,13 +265,19 @@ def collect_comments(driver, code, limit, timeout=10):
     return comments[:limit]
 
 
-def crawl(name, on_progress=None):
-    """(실제종목명, 댓글 리스트) 반환. 실패 시 PipelineError 계열 예외."""
-    notify = on_progress or (lambda msg: None)
+def crawl_events(name):
+    """진행 이벤트를 yield 하고, 마지막에 {"type": "crawled", ...} 를 yield 한다.
+
+    실패 시 PipelineError 계열 예외를 던진다.
+    """
     with make_driver() as driver:
-        notify("토스증권에서 회사를 검색하는 중...")
+        yield {"type": "progress", "step": "search", "message": "토스증권에서 회사를 검색하는 중..."}
         code = search_company(driver, name)
         official = stock_name(driver, name)
-        notify(f"'{official}' 커뮤니티 댓글을 수집하는 중...")
+        yield {
+            "type": "progress",
+            "step": "collect",
+            "message": f"'{official}' 커뮤니티 댓글을 수집하는 중...",
+        }
         comments = collect_comments(driver, code, settings.CRAWL_COMMENT_LIMIT)
-    return official, comments
+    yield {"type": "crawled", "official": official, "comments": comments}
