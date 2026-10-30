@@ -143,12 +143,12 @@ MAILERS = {
 }
 
 # --- 댓글 증강 시스템 설정 ---
-GMS_API_URL = os.environ.get(
-    "GMS_API_URL", "https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions"
-)
-GMS_API_KEY = os.environ.get("GMS_API_KEY", "")
-GMS_MODEL = os.environ.get("GMS_MODEL", "gpt-4o-mini")
-GMS_TIMEOUT = int(os.environ.get("GMS_TIMEOUT", "60"))
+# GMS_BASE_URL(…/v1) 이면 뒤에 /chat/completions 를 붙이고, GMS_API_URL 이면 그대로 쓴다.
+_GMS_BASE_URL = os.environ.get("GMS_BASE_URL", "https://gms.ssafy.io/gmsapi/api.openai.com/v1")
+GMS_API_URL = os.environ.get("GMS_API_URL") or _GMS_BASE_URL.rstrip("/") + "/chat/completions"
+GMS_API_KEY = os.environ.get("GMS_API_KEY") or os.environ.get("GMS_KEY", "")
+GMS_MODEL = os.environ.get("GMS_MODEL") or os.environ.get("MODEL", "gpt-4o-mini")
+GMS_TIMEOUT = int(os.environ.get("GMS_TIMEOUT", "120"))
 
 CHROME_BINARY = os.environ.get("CHROME_BINARY", "")  # 비우면 기본 Chrome
 CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH", "")  # 비우면 자동 관리
