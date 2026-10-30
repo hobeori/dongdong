@@ -7,8 +7,7 @@
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env        # GMS_API_KEY 입력 후 export (또는 환경변수로 직접 지정)
-export GMS_API_KEY=...
+cp .env.example .env        # .env 를 열어 GMS_API_KEY=발급받은키 로 수정 (서버 재시작 필요)
 python manage.py migrate
 python manage.py runserver
 ```
